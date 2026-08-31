@@ -1,9 +1,8 @@
 package com.harsh.finance_project.user.model;
 
 import com.harsh.finance_project.holding.model.Holding;
+import com.harsh.finance_project.wallet.model.Wallet;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import org.hibernate.annotations.Cascade;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +30,9 @@ public class User {
 
     @OneToMany(mappedBy = "user")
     private List<Holding> holdings;
+
+    @OneToOne(mappedBy = "user")
+    private Wallet wallet;
 
     public User() {
     }
