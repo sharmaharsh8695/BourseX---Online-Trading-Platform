@@ -5,5 +5,6 @@ public enum WalletTransactionType {
     WITHDRAWAL,
     RESERVE,
     RELEASE_RESERVED,
-    CAPTURE_RESERVED
+    CAPTURE_RESERVED,
+    TRADE_SELL
 }

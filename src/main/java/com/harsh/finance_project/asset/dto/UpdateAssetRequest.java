@@ -1,5 +1,6 @@
 package com.harsh.finance_project.asset.dto;
 
+import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.model.AssetType;
 
 import java.math.BigDecimal;
@@ -8,6 +9,7 @@ public class UpdateAssetRequest {
     private String name;
     private String symbol;
     private String unit;
+    private AssetStatus status;
     private AssetType assetType;
     private BigDecimal currentPrice;
 
@@ -31,8 +33,16 @@ public class UpdateAssetRequest {
         return unit;
     }
 
+    public AssetStatus getStatus() {
+        return status;
+    }
+
     public void setUnit(String unit) {
         this.unit = unit;
+    }
+
+    public void setStatus(AssetStatus status) {
+        this.status = status;
     }
 
     public AssetType getAssetType() {

@@ -3,6 +3,7 @@ package com.harsh.finance_project.user.service;
 import com.harsh.finance_project.user.dto.CreateUserRequest;
 import com.harsh.finance_project.user.dto.UserResponse;
 import com.harsh.finance_project.user.model.User;
+import com.harsh.finance_project.user.model.UserStatus;
 import com.harsh.finance_project.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +25,7 @@ public class UserService {
         user.setName(dto.getName());
         user.setEmail(dto.getEmail());
         user.setPassword(dto.getPassword());
+        user.setStatus(UserStatus.ACTIVE);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
 

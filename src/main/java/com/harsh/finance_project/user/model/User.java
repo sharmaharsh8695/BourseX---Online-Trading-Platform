@@ -24,6 +24,9 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @Enumerated(EnumType.STRING)
+    private UserStatus status;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -50,6 +53,10 @@ public class User {
         this.password = password;
     }
 
+    public void setStatus(UserStatus status) {
+        this.status = status;
+    }
+
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
@@ -72,6 +79,10 @@ public class User {
 
     public String getPassword() {
         return password;
+    }
+
+    public UserStatus getStatus() {
+        return status;
     }
 
     public LocalDateTime getCreatedAt() {

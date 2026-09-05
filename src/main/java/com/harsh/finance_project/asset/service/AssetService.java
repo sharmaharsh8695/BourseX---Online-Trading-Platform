@@ -58,6 +58,9 @@ public class AssetService {
         if(dto.getUnit() != null){
             asset.setUnit(dto.getUnit());
         }
+        if(dto.getStatus() != null){
+            asset.setStatus(dto.getStatus());
+        }
         if(dto.getAssetType() != null){
             asset.setAssetType(dto.getAssetType());
         }

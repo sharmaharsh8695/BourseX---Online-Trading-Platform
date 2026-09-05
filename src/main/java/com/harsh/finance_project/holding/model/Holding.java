@@ -24,6 +24,9 @@ public class Holding {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal quantity;
 
+    @Column(precision = 19, scale = 4)
+    private BigDecimal reservedQuantity;
+
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal avgPrice;
 
@@ -34,6 +37,7 @@ public class Holding {
         this.user = user;
         this.asset = asset;
         this.quantity = quantity;
+        this.reservedQuantity = BigDecimal.ZERO;
         this.avgPrice = avgPrice;
     }
 
@@ -61,8 +65,20 @@ public class Holding {
         return quantity;
     }
 
+    public BigDecimal getReservedQuantity() {
+        return reservedQuantity == null ? BigDecimal.ZERO : reservedQuantity;
+    }
+
+    public BigDecimal getAvailableQuantity() {
+        return getQuantity().subtract(getReservedQuantity());
+    }
+
     public void setQuantity(BigDecimal quantity) {
         this.quantity = quantity;
+    }
+
+    public void setReservedQuantity(BigDecimal reservedQuantity) {
+        this.reservedQuantity = reservedQuantity;
     }
 
     public BigDecimal getAvgPrice() {
