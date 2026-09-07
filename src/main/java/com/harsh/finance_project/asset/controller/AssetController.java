@@ -5,13 +5,13 @@ import com.harsh.finance_project.asset.dto.CreateAssetRequest;
 import com.harsh.finance_project.asset.dto.UpdateAssetRequest;
 import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.service.AssetService;
+import com.harsh.finance_project.common.dto.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/assets")
@@ -36,11 +36,9 @@ public class AssetController {
     }
 
     @GetMapping("")
-    public ResponseEntity<List<AssetResponse>> getAllAssets(){
-        List<Asset> assets = assetService.getAllAssets();
-        return ResponseEntity.status(HttpStatus.OK).body(assets.stream()
-                .map(asset -> new AssetResponse(asset))
-                .toList());
+    public ResponseEntity<PageResponse<AssetResponse>> getAllAssets(Pageable pageable){
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(PageResponse.from(assetService.getAllAssets(pageable), AssetResponse::new));
     }
 
     @PutMapping("")

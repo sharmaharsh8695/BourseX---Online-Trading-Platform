@@ -1,5 +1,6 @@
 package com.harsh.finance_project.holding.controller;
 
+import com.harsh.finance_project.common.dto.PageResponse;
 import com.harsh.finance_project.holding.dto.CreateHoldingRequest;
 import com.harsh.finance_project.holding.dto.HoldingResponse;
 import com.harsh.finance_project.holding.dto.UpdateHoldingRequest;
@@ -7,11 +8,10 @@ import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.service.HoldingService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api")
@@ -44,21 +44,15 @@ public class HoldingController {
     }
 
     @GetMapping("/holding")
-    public ResponseEntity<List<HoldingResponse>> getAllHoldings() {
-        List<Holding> holdings = holdingService.getAllHoldings();
-
-        return ResponseEntity.status(HttpStatus.OK).body(holdings.stream()
-                .map(holding -> new HoldingResponse(holding))
-                .toList());
+    public ResponseEntity<PageResponse<HoldingResponse>> getAllHoldings(Pageable pageable) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(PageResponse.from(holdingService.getAllHoldings(pageable), HoldingResponse::new));
     }
 
     @GetMapping("/holdings/user/{userId}")
-    public ResponseEntity<List<HoldingResponse>> getHoldingsByUser(@PathVariable Long userId) {
-        List<Holding> holdings = holdingService.getHoldingsByUser(userId);
-
-        return ResponseEntity.status(HttpStatus.OK).body(holdings.stream()
-                .map(holding -> new HoldingResponse(holding))
-                .toList());
+    public ResponseEntity<PageResponse<HoldingResponse>> getHoldingsByUser(@PathVariable Long userId, Pageable pageable) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(PageResponse.from(holdingService.getHoldingsByUser(userId, pageable), HoldingResponse::new));
     }
 
     @PutMapping("/holding")

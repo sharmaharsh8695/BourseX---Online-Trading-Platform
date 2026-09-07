@@ -5,11 +5,13 @@ import com.harsh.finance_project.asset.dto.UpdateAssetRequest;
 import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.repository.AssetRepository;
+import com.harsh.finance_project.common.web.PageableUtil;
 import jakarta.persistence.NoResultException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -42,8 +44,8 @@ public class AssetService {
         return asset.orElseThrow(()-> new NoResultException());
     }
 
-    public List<Asset> getAllAssets(){
-        return repository.findAll();
+    public Page<Asset> getAllAssets(Pageable pageable){
+        return repository.findAll(PageableUtil.bounded(pageable));
     }
 
     public Asset updateAsset(Long id, UpdateAssetRequest dto){

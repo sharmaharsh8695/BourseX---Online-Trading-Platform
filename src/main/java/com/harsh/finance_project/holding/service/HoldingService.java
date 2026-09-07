@@ -2,6 +2,7 @@ package com.harsh.finance_project.holding.service;
 
 import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.repository.AssetRepository;
+import com.harsh.finance_project.common.web.PageableUtil;
 import com.harsh.finance_project.holding.dto.CreateHoldingRequest;
 import com.harsh.finance_project.holding.dto.HoldingResponse;
 import com.harsh.finance_project.holding.dto.UpdateHoldingRequest;
@@ -10,9 +11,9 @@ import com.harsh.finance_project.holding.repository.HoldingRepository;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.repository.UserRepository;
 import jakarta.persistence.NoResultException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class HoldingService {
@@ -38,7 +39,7 @@ public class HoldingService {
     }
 
     public Holding getHoldingById(Long id) {
-        return holdingRepository.findById(id).orElseThrow(() -> new NoResultException());
+        return holdingRepository.findWithUserAndAssetById(id).orElseThrow(() -> new NoResultException());
     }
 
     public Holding updateHolding(Long id, UpdateHoldingRequest dto) {
@@ -53,14 +54,16 @@ public class HoldingService {
         return holding;
     }
 
-    public List<Holding> getAllHoldings() {
-        return holdingRepository.findAll();
+    public Page<Holding> getAllHoldings(Pageable pageable) {
+        return holdingRepository.findAll(PageableUtil.bounded(pageable));
     }
 
-    public List<Holding> getHoldingsByUser(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new NoResultException());
+    public Page<Holding> getHoldingsByUser(Long userId, Pageable pageable) {
+        if (!userRepository.existsById(userId)) {
+            throw new NoResultException();
+        }
 
-        return holdingRepository.findByUser(user);
+        return holdingRepository.findByUserId(userId, PageableUtil.bounded(pageable));
     }
 
     public void deleteHolding(Long id) {

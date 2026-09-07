@@ -3,6 +3,7 @@ package com.harsh.finance_project.order.service;
 import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.repository.AssetRepository;
+import com.harsh.finance_project.common.web.PageableUtil;
 import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
 import com.harsh.finance_project.order.dto.CreateOrderRequest;
@@ -24,13 +25,14 @@ import com.harsh.finance_project.wallet.model.WalletTransactionType;
 import com.harsh.finance_project.wallet.repository.WalletRepository;
 import com.harsh.finance_project.wallet.repository.WalletTransactionRepository;
 import jakarta.persistence.NoResultException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 public class OrderService {
@@ -81,15 +83,15 @@ public class OrderService {
     }
 
     public Order getOrderById(Long id) {
-        return orderRepository.findById(id).orElseThrow(() -> new NoResultException());
+        return orderRepository.findWithUserAndAssetById(id).orElseThrow(() -> new NoResultException());
     }
 
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
+    public Page<Order> getAllOrders(Pageable pageable) {
+        return orderRepository.findAll(PageableUtil.bounded(pageable));
     }
 
-    public List<Order> getOrdersByUser(Long userId) {
-        return orderRepository.findByUserId(userId);
+    public Page<Order> getOrdersByUser(Long userId, Pageable pageable) {
+        return orderRepository.findByUserId(userId, PageableUtil.bounded(pageable));
     }
 
     @Transactional

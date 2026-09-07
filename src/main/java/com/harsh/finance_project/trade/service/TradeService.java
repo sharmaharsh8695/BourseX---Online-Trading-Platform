@@ -1,11 +1,12 @@
 package com.harsh.finance_project.trade.service;
 
+import com.harsh.finance_project.common.web.PageableUtil;
 import com.harsh.finance_project.trade.model.Trade;
 import com.harsh.finance_project.trade.repository.TradeRepository;
 import jakarta.persistence.NoResultException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class TradeService {
@@ -16,18 +17,18 @@ public class TradeService {
     }
 
     public Trade getTradeById(Long id) {
-        return tradeRepository.findById(id).orElseThrow(() -> new NoResultException());
+        return tradeRepository.findWithOrderUserAssetById(id).orElseThrow(() -> new NoResultException());
     }
 
-    public List<Trade> getAllTrades() {
-        return tradeRepository.findAll();
+    public Page<Trade> getAllTrades(Pageable pageable) {
+        return tradeRepository.findAll(PageableUtil.bounded(pageable));
     }
 
-    public List<Trade> getTradesByUser(Long userId) {
-        return tradeRepository.findByUserId(userId);
+    public Page<Trade> getTradesByUser(Long userId, Pageable pageable) {
+        return tradeRepository.findByUserId(userId, PageableUtil.bounded(pageable));
     }
 
-    public List<Trade> getTradesByOrder(Long orderId) {
-        return tradeRepository.findByOrderId(orderId);
+    public Page<Trade> getTradesByOrder(Long orderId, Pageable pageable) {
+        return tradeRepository.findByOrderId(orderId, PageableUtil.bounded(pageable));
     }
 }

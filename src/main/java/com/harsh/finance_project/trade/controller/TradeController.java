@@ -1,14 +1,14 @@
 package com.harsh.finance_project.trade.controller;
 
+import com.harsh.finance_project.common.dto.PageResponse;
 import com.harsh.finance_project.trade.dto.TradeResponse;
 import com.harsh.finance_project.trade.model.Trade;
 import com.harsh.finance_project.trade.service.TradeService;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api")
@@ -34,29 +34,20 @@ public class TradeController {
     }
 
     @GetMapping("/trade")
-    public ResponseEntity<List<TradeResponse>> getAllTrades() {
-        List<Trade> trades = tradeService.getAllTrades();
-
-        return ResponseEntity.status(HttpStatus.OK).body(trades.stream()
-                .map(trade -> new TradeResponse(trade))
-                .toList());
+    public ResponseEntity<PageResponse<TradeResponse>> getAllTrades(Pageable pageable) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(PageResponse.from(tradeService.getAllTrades(pageable), TradeResponse::new));
     }
 
     @GetMapping("/trades/user/{userId}")
-    public ResponseEntity<List<TradeResponse>> getTradesByUser(@PathVariable Long userId) {
-        List<Trade> trades = tradeService.getTradesByUser(userId);
-
-        return ResponseEntity.status(HttpStatus.OK).body(trades.stream()
-                .map(trade -> new TradeResponse(trade))
-                .toList());
+    public ResponseEntity<PageResponse<TradeResponse>> getTradesByUser(@PathVariable Long userId, Pageable pageable) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(PageResponse.from(tradeService.getTradesByUser(userId, pageable), TradeResponse::new));
     }
 
     @GetMapping("/trades/order/{orderId}")
-    public ResponseEntity<List<TradeResponse>> getTradesByOrder(@PathVariable Long orderId) {
-        List<Trade> trades = tradeService.getTradesByOrder(orderId);
-
-        return ResponseEntity.status(HttpStatus.OK).body(trades.stream()
-                .map(trade -> new TradeResponse(trade))
-                .toList());
+    public ResponseEntity<PageResponse<TradeResponse>> getTradesByOrder(@PathVariable Long orderId, Pageable pageable) {
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(PageResponse.from(tradeService.getTradesByOrder(orderId, pageable), TradeResponse::new));
     }
 }

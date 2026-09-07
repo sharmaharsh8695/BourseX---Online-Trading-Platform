@@ -108,7 +108,13 @@ class TradeXApiIntegrationTests {
 
         mockMvc.perform(get("/api/assets"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(assetId));
+                .andExpect(jsonPath("$.content[0].id").value(assetId))
+                .andExpect(jsonPath("$.pageNumber").value(0))
+                .andExpect(jsonPath("$.pageSize").value(20))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.last").value(true));
 
         mockMvc.perform(put("/api/assets")
                         .param("id", String.valueOf(assetId))
@@ -159,11 +165,13 @@ class TradeXApiIntegrationTests {
 
         mockMvc.perform(get("/api/holding"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(holdingId));
+                .andExpect(jsonPath("$.content[0].id").value(holdingId))
+                .andExpect(jsonPath("$.totalElements").value(1));
 
         mockMvc.perform(get("/api/holdings/user/" + userId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(holdingId));
+                .andExpect(jsonPath("$.content[0].id").value(holdingId))
+                .andExpect(jsonPath("$.totalElements").value(1));
 
         mockMvc.perform(put("/api/holding")
                         .param("id", String.valueOf(holdingId))
@@ -235,12 +243,81 @@ class TradeXApiIntegrationTests {
 
         mockMvc.perform(get("/api/wallet/user/" + userId + "/transactions"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(5));
+                .andExpect(jsonPath("$.content.length()").value(5))
+                .andExpect(jsonPath("$.totalElements").value(5));
 
         Wallet wallet = walletRepository.findByUserId(userId).orElseThrow();
         assertThat(wallet.getBalance()).isEqualByComparingTo("55.00");
         assertThat(wallet.getReservedBalance()).isEqualByComparingTo("0.00");
         assertThat(walletTransactionRepository.findAll()).hasSize(5);
+    }
+
+    @Test
+    void portfolioApiCalculatesCashHoldingValuesAndProfitLoss() throws Exception {
+        long userId = createUser("Portfolio User", "portfolio@example.com");
+        createWallet(userId);
+        postWalletAmount(userId, "deposit", "1000.00").andExpect(status().isOk());
+        long assetId = createAsset("Apple", "AAPL", "share", "STOCK", "100.00");
+        createHolding(userId, assetId, "3.00");
+
+        mockMvc.perform(put("/api/assets")
+                        .param("id", String.valueOf(assetId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPrice":120.00}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/portfolio/" + userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userId))
+                .andExpect(jsonPath("$.cash").value(1000.0))
+                .andExpect(jsonPath("$.totalInvestedValue").value(300.0))
+                .andExpect(jsonPath("$.totalCurrentValue").value(360.0))
+                .andExpect(jsonPath("$.totalProfitLoss").value(60.0));
+
+        mockMvc.perform(get("/api/portfolio/" + userId + "/holdings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].assetId").value(assetId))
+                .andExpect(jsonPath("$.content[0].symbol").value("AAPL"))
+                .andExpect(jsonPath("$.content[0].name").value("Apple"))
+                .andExpect(jsonPath("$.content[0].quantity").value(3.0))
+                .andExpect(jsonPath("$.content[0].averageBuyPrice").value(100.0))
+                .andExpect(jsonPath("$.content[0].currentPrice").value(120.0))
+                .andExpect(jsonPath("$.content[0].investedValue").value(300.0))
+                .andExpect(jsonPath("$.content[0].currentValue").value(360.0))
+                .andExpect(jsonPath("$.content[0].profitLoss").value(60.0))
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void portfolioApiHandlesUsersWithNoHoldings() throws Exception {
+        long userId = createUser("Empty Portfolio User", "empty-portfolio@example.com");
+        createWallet(userId);
+
+        mockMvc.perform(get("/api/portfolio/" + userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cash").value(0.0))
+                .andExpect(jsonPath("$.totalInvestedValue").value(0))
+                .andExpect(jsonPath("$.totalCurrentValue").value(0))
+                .andExpect(jsonPath("$.totalProfitLoss").value(0));
+
+        mockMvc.perform(get("/api/portfolio/" + userId + "/holdings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(0))
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void portfolioApiReturnsNotFoundWhenUserOrWalletIsMissing() throws Exception {
+        mockMvc.perform(get("/api/portfolio/999999"))
+                .andExpect(status().isNotFound());
+
+        long userId = createUser("No Wallet User", "no-wallet@example.com");
+
+        mockMvc.perform(get("/api/portfolio/" + userId))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -259,8 +336,8 @@ class TradeXApiIntegrationTests {
 
         mockMvc.perform(get("/api/trades/order/" + orderId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].totalAmount").value(400.0));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].totalAmount").value(400.0));
 
         Holding holding = holdingRepository.findByUserIdAndAssetId(userId, assetId).orElseThrow();
         Wallet wallet = walletRepository.findByUserId(userId).orElseThrow();
@@ -285,12 +362,12 @@ class TradeXApiIntegrationTests {
 
         mockMvc.perform(get("/api/trade"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].orderId").value(orderId))
-                .andExpect(jsonPath("$[0].orderSide").value("SELL"));
+                .andExpect(jsonPath("$.content[0].orderId").value(orderId))
+                .andExpect(jsonPath("$.content[0].orderSide").value("SELL"));
 
         mockMvc.perform(get("/api/trades/user/" + userId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(jsonPath("$.content.length()").value(1));
 
         Holding holding = holdingRepository.findByUserIdAndAssetId(userId, assetId).orElseThrow();
         Wallet wallet = walletRepository.findByUserId(userId).orElseThrow();

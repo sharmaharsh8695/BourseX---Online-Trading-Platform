@@ -1,5 +1,6 @@
 package com.harsh.finance_project.wallet.service;
 
+import com.harsh.finance_project.common.web.PageableUtil;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.repository.UserRepository;
 import com.harsh.finance_project.wallet.dto.CreateWalletRequest;
@@ -13,12 +14,13 @@ import com.harsh.finance_project.wallet.model.WalletTransactionType;
 import com.harsh.finance_project.wallet.repository.WalletRepository;
 import com.harsh.finance_project.wallet.repository.WalletTransactionRepository;
 import jakarta.persistence.NoResultException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 public class WalletService {
@@ -51,12 +53,11 @@ public class WalletService {
         return walletRepository.findByUserId(userId).orElseThrow(() -> new NoResultException());
     }
 
-    public List<WalletTransactionResponse> getTransactionsByUser(Long userId) {
+    public Page<WalletTransactionResponse> getTransactionsByUser(Long userId, Pageable pageable) {
         Wallet wallet = getWalletByUser(userId);
 
-        return transactionRepository.findByWalletOrderByCreatedAtDesc(wallet).stream()
-                .map(transaction -> new WalletTransactionResponse(transaction))
-                .toList();
+        return transactionRepository.findByWalletOrderByCreatedAtDesc(wallet, PageableUtil.bounded(pageable))
+                .map(WalletTransactionResponse::new);
     }
 
     @Transactional

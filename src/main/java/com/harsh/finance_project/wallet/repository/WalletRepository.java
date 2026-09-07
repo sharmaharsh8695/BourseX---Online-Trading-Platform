@@ -3,6 +3,7 @@ package com.harsh.finance_project.wallet.repository;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.wallet.model.Wallet;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -10,8 +11,10 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.Optional;
 
 public interface WalletRepository extends JpaRepository<Wallet, Long> {
+    @EntityGraph(attributePaths = "user")
     Optional<Wallet> findByUser(User user);
 
+    @EntityGraph(attributePaths = "user")
     Optional<Wallet> findByUserId(Long userId);
 
     boolean existsByUser(User user);

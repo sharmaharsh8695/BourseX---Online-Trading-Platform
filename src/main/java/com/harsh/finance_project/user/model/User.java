@@ -34,7 +34,7 @@ public class User {
     @OneToMany(mappedBy = "user")
     private List<Holding> holdings;
 
-    @OneToOne(mappedBy = "user")
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private Wallet wallet;
 
     public User() {
