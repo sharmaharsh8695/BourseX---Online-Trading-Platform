@@ -1,6 +1,8 @@
 package com.harsh.finance_project.wallet.service;
 
 import com.harsh.finance_project.common.web.PageableUtil;
+import com.harsh.finance_project.exception.InsufficientBalanceException;
+import com.harsh.finance_project.exception.UserNotFoundException;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.repository.UserRepository;
 import com.harsh.finance_project.wallet.dto.CreateWalletRequest;
@@ -36,7 +38,7 @@ public class WalletService {
 
     @Transactional
     public WalletResponse createWallet(CreateWalletRequest dto) {
-        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new NoResultException());
+        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
 
         if (walletRepository.existsByUser(user)) {
             throw new IllegalArgumentException("Wallet already exists for user");
@@ -79,7 +81,7 @@ public class WalletService {
         validatePositiveAmount(dto.getAmount());
 
         if (wallet.getAvailableBalance().compareTo(dto.getAmount()) < 0) {
-            throw new IllegalArgumentException("Withdrawal amount exceeds available funds");
+            throw new InsufficientBalanceException("Withdrawal amount exceeds available funds");
         }
 
         wallet.setBalance(wallet.getBalance().subtract(dto.getAmount()));
@@ -95,7 +97,7 @@ public class WalletService {
         validatePositiveAmount(dto.getAmount());
 
         if (wallet.getAvailableBalance().compareTo(dto.getAmount()) < 0) {
-            throw new IllegalArgumentException("Reserve amount exceeds available funds");
+            throw new InsufficientBalanceException("Reserve amount exceeds available funds");
         }
 
         wallet.setReservedBalance(wallet.getReservedBalance().add(dto.getAmount()));
@@ -111,7 +113,7 @@ public class WalletService {
         validatePositiveAmount(dto.getAmount());
 
         if (wallet.getReservedBalance().compareTo(dto.getAmount()) < 0) {
-            throw new IllegalArgumentException("Release amount exceeds reserved funds");
+            throw new InsufficientBalanceException("Release amount exceeds reserved funds");
         }
 
         wallet.setReservedBalance(wallet.getReservedBalance().subtract(dto.getAmount()));
@@ -127,7 +129,7 @@ public class WalletService {
         validatePositiveAmount(dto.getAmount());
 
         if (wallet.getReservedBalance().compareTo(dto.getAmount()) < 0) {
-            throw new IllegalArgumentException("Capture amount exceeds reserved funds");
+            throw new InsufficientBalanceException("Capture amount exceeds reserved funds");
         }
 
         wallet.setReservedBalance(wallet.getReservedBalance().subtract(dto.getAmount()));

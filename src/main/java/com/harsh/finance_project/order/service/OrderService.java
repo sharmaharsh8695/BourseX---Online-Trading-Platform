@@ -4,6 +4,12 @@ import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.repository.AssetRepository;
 import com.harsh.finance_project.common.web.PageableUtil;
+import com.harsh.finance_project.exception.AssetNotFoundException;
+import com.harsh.finance_project.exception.InsufficientBalanceException;
+import com.harsh.finance_project.exception.InsufficientHoldingException;
+import com.harsh.finance_project.exception.InvalidOrderException;
+import com.harsh.finance_project.exception.OrderNotFoundException;
+import com.harsh.finance_project.exception.UserNotFoundException;
 import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
 import com.harsh.finance_project.order.dto.CreateOrderRequest;
@@ -58,8 +64,8 @@ public class OrderService {
     public OrderResponse createOrder(CreateOrderRequest dto) {
         validatePositiveAmount(dto.getQuantity(), "Quantity must be greater than zero");
 
-        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new NoResultException());
-        Asset asset = assetRepository.findById(dto.getAssetId()).orElseThrow(() -> new NoResultException());
+        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
+        Asset asset = assetRepository.findById(dto.getAssetId()).orElseThrow(() -> new AssetNotFoundException(dto.getAssetId()));
         validateUserActive(user);
         validateAssetActive(asset);
         validatePrice(dto);
@@ -83,7 +89,7 @@ public class OrderService {
     }
 
     public Order getOrderById(Long id) {
-        return orderRepository.findWithUserAndAssetById(id).orElseThrow(() -> new NoResultException());
+        return orderRepository.findWithUserAndAssetById(id).orElseThrow(() -> new OrderNotFoundException(id));
     }
 
     public Page<Order> getAllOrders(Pageable pageable) {
@@ -96,10 +102,10 @@ public class OrderService {
 
     @Transactional
     public OrderResponse cancelOrder(Long id) {
-        Order order = orderRepository.findByIdForUpdate(id).orElseThrow(() -> new NoResultException());
+        Order order = orderRepository.findByIdForUpdate(id).orElseThrow(() -> new OrderNotFoundException(id));
 
         if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalArgumentException("Only pending orders can be cancelled");
+            throw new InvalidOrderException("Only pending orders can be cancelled");
         }
 
         if (order.getOrderSide() == OrderSide.BUY) {
@@ -118,10 +124,10 @@ public class OrderService {
 
     @Transactional
     public OrderResponse executeOrder(Long id) {
-        Order order = orderRepository.findByIdForUpdate(id).orElseThrow(() -> new NoResultException());
+        Order order = orderRepository.findByIdForUpdate(id).orElseThrow(() -> new OrderNotFoundException(id));
 
         if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalArgumentException("Only pending orders can be executed");
+            throw new InvalidOrderException("Only pending orders can be executed");
         }
 
         validateUserActive(order.getUser());
@@ -133,7 +139,7 @@ public class OrderService {
 
     private void executeOrder(Order order, BigDecimal executionPrice) {
         if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalArgumentException("Only pending orders can be executed");
+            throw new InvalidOrderException("Only pending orders can be executed");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -157,7 +163,7 @@ public class OrderService {
         Wallet wallet = getLockedActiveWallet(order.getUser().getId());
 
         if (wallet.getAvailableBalance().compareTo(requiredAmount) < 0) {
-            throw new IllegalArgumentException("Insufficient available wallet funds");
+            throw new InsufficientBalanceException("Insufficient available wallet funds");
         }
 
         wallet.setReservedBalance(wallet.getReservedBalance().add(requiredAmount));
@@ -170,7 +176,7 @@ public class OrderService {
         Wallet wallet = getLockedActiveWallet(order.getUser().getId());
 
         if (wallet.getReservedBalance().compareTo(amount) < 0) {
-            throw new IllegalArgumentException("Reserved wallet funds are insufficient");
+            throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
         }
 
         wallet.setReservedBalance(wallet.getReservedBalance().subtract(amount));
@@ -183,7 +189,7 @@ public class OrderService {
         Wallet wallet = getLockedActiveWallet(order.getUser().getId());
 
         if (order.getReservedAmount().compareTo(totalAmount) < 0 || wallet.getReservedBalance().compareTo(totalAmount) < 0) {
-            throw new IllegalArgumentException("Reserved wallet funds are insufficient");
+            throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
         }
 
         wallet.setReservedBalance(wallet.getReservedBalance().subtract(totalAmount));
@@ -217,10 +223,10 @@ public class OrderService {
 
     private void reserveSellHolding(Order order) {
         Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found for sell order"));
+                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
 
         if (holding.getAvailableQuantity().compareTo(order.getQuantity()) < 0) {
-            throw new IllegalArgumentException("Insufficient available holding quantity");
+            throw new InsufficientHoldingException("Insufficient available holding quantity");
         }
 
         holding.setReservedQuantity(holding.getReservedQuantity().add(order.getQuantity()));
@@ -230,10 +236,10 @@ public class OrderService {
 
     private void releaseSellHolding(Order order) {
         Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found for sell order"));
+                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
 
         if (holding.getReservedQuantity().compareTo(order.getReservedQuantity()) < 0) {
-            throw new IllegalArgumentException("Reserved holding quantity is insufficient");
+            throw new InsufficientHoldingException("Reserved holding quantity is insufficient");
         }
 
         holding.setReservedQuantity(holding.getReservedQuantity().subtract(order.getReservedQuantity()));
@@ -243,10 +249,10 @@ public class OrderService {
 
     private void executeSell(Order order, BigDecimal executionPrice, LocalDateTime now) {
         Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Holding not found for sell order"));
+                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
 
         if (holding.getReservedQuantity().compareTo(order.getReservedQuantity()) < 0 || holding.getQuantity().compareTo(order.getQuantity()) < 0) {
-            throw new IllegalArgumentException("Reserved holding quantity is insufficient");
+            throw new InsufficientHoldingException("Reserved holding quantity is insufficient");
         }
 
         holding.setReservedQuantity(holding.getReservedQuantity().subtract(order.getReservedQuantity()));
@@ -266,7 +272,7 @@ public class OrderService {
         Wallet wallet = walletRepository.findByUserIdForUpdate(userId).orElseThrow(() -> new NoResultException());
 
         if (wallet.getStatus() != WalletStatus.ACTIVE) {
-            throw new IllegalArgumentException("Wallet is not active");
+            throw new InvalidOrderException("Wallet is not active");
         }
 
         return wallet;
@@ -295,19 +301,19 @@ public class OrderService {
 
     private void validatePositiveAmount(BigDecimal amount, String message) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(message);
+            throw new InvalidOrderException(message);
         }
     }
 
     private void validateUserActive(User user) {
         if (user.getStatus() != null && user.getStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("User is not active");
+            throw new InvalidOrderException("User is not active");
         }
     }
 
     private void validateAssetActive(Asset asset) {
         if (asset.getStatus() != AssetStatus.ACTIVE) {
-            throw new IllegalArgumentException("Asset is not active");
+            throw new InvalidOrderException("Asset is not active");
         }
     }
 }

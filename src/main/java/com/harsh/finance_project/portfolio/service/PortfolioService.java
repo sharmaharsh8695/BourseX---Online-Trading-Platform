@@ -4,6 +4,7 @@ import com.harsh.finance_project.common.web.PageableUtil;
 import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
 import com.harsh.finance_project.holding.repository.PortfolioValueTotals;
+import com.harsh.finance_project.exception.UserNotFoundException;
 import com.harsh.finance_project.portfolio.dto.HoldingSummaryResponse;
 import com.harsh.finance_project.portfolio.dto.PortfolioResponse;
 import com.harsh.finance_project.user.repository.UserRepository;
@@ -30,7 +31,7 @@ public class PortfolioService {
 
     public PortfolioResponse getPortfolio(Long userId) {
         if (!userRepository.existsById(userId)) {
-            throw new NoResultException();
+            throw new UserNotFoundException(userId);
         }
 
         Wallet wallet = walletRepository.findByUserId(userId).orElseThrow(() -> new NoResultException());
@@ -49,7 +50,7 @@ public class PortfolioService {
 
     public Page<HoldingSummaryResponse> getPortfolioHoldings(Long userId, Pageable pageable) {
         if (!userRepository.existsById(userId)) {
-            throw new NoResultException();
+            throw new UserNotFoundException(userId);
         }
 
         return holdingRepository.findByUserId(userId, PageableUtil.bounded(pageable))

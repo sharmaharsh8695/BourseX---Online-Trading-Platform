@@ -8,6 +8,8 @@ import com.harsh.finance_project.holding.dto.HoldingResponse;
 import com.harsh.finance_project.holding.dto.UpdateHoldingRequest;
 import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
+import com.harsh.finance_project.exception.AssetNotFoundException;
+import com.harsh.finance_project.exception.UserNotFoundException;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.repository.UserRepository;
 import jakarta.persistence.NoResultException;
@@ -28,8 +30,8 @@ public class HoldingService {
     }
 
     public HoldingResponse createHolding(CreateHoldingRequest dto) {
-        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new NoResultException());
-        Asset asset = assetRepository.findById(dto.getAssetId()).orElseThrow(() -> new NoResultException());
+        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
+        Asset asset = assetRepository.findById(dto.getAssetId()).orElseThrow(() -> new AssetNotFoundException(dto.getAssetId()));
 
         Holding holding = new Holding(user, asset, dto.getQuantity(),asset.getCurrentPrice());
 
@@ -60,7 +62,7 @@ public class HoldingService {
 
     public Page<Holding> getHoldingsByUser(Long userId, Pageable pageable) {
         if (!userRepository.existsById(userId)) {
-            throw new NoResultException();
+            throw new UserNotFoundException(userId);
         }
 
         return holdingRepository.findByUserId(userId, PageableUtil.bounded(pageable));

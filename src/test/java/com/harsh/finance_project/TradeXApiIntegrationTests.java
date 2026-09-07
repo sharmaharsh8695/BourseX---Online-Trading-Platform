@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.math.BigDecimal;
 import java.util.regex.Matcher;
@@ -82,7 +83,8 @@ class TradeXApiIntegrationTests {
                                 {"name":"Asha Rao","email":"asha@example.com","password":"secret"}
                                 """))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("409 : Conflict"));
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"));
 
         mockMvc.perform(post("/api/user")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -90,7 +92,8 @@ class TradeXApiIntegrationTests {
                                 {"name":"Bad Email","email":"not-an-email","password":"secret"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("400: Bad Request"));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"));
 
         User user = userRepository.findById(userId).orElseThrow();
         assertThat(user.getEmail()).isEqualTo("asha@example.com");
@@ -131,7 +134,12 @@ class TradeXApiIntegrationTests {
         assertThat(asset.getCurrentPrice()).isEqualByComparingTo("210.00");
 
         mockMvc.perform(get("/api/assets").param("id", "999999"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Asset not found with id: 999999"))
+                .andExpect(jsonPath("$.path").value("/api/assets"))
+                .andExpect(jsonPath("$.timestamp").exists());
 
         mockMvc.perform(post("/api/assets")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -190,7 +198,8 @@ class TradeXApiIntegrationTests {
                         .content("""
                                 {"userId":999999,"assetId":%d,"quantity":1.00}
                                 """.formatted(assetId)))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("User not found with id: 999999"));
 
         mockMvc.perform(get("/api/holdings/999999"))
                 .andExpect(status().isNotFound());
@@ -223,7 +232,7 @@ class TradeXApiIntegrationTests {
                 .andExpect(jsonPath("$.availableBalance").value(60.0));
 
         postWalletAmount(userId, "withdraw", "70.00")
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
 
         postWalletAmount(userId, "release", "15.00")
                 .andExpect(status().isOk())
@@ -312,7 +321,12 @@ class TradeXApiIntegrationTests {
     @Test
     void portfolioApiReturnsNotFoundWhenUserOrWalletIsMissing() throws Exception {
         mockMvc.perform(get("/api/portfolio/999999"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("User not found with id: 999999"))
+                .andExpect(jsonPath("$.path").value("/api/portfolio/999999"))
+                .andExpect(jsonPath("$.timestamp").exists());
 
         long userId = createUser("No Wallet User", "no-wallet@example.com");
 
@@ -348,7 +362,12 @@ class TradeXApiIntegrationTests {
         assertThat(walletTransactionRepository.findAll()).hasSize(3);
 
         mockMvc.perform(post("/api/orders/" + orderId + "/execute"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Only pending orders can be executed"))
+                .andExpect(jsonPath("$.path").value("/api/orders/" + orderId + "/execute"))
+                .andExpect(jsonPath("$.timestamp").exists());
     }
 
     @Test
@@ -434,12 +453,12 @@ class TradeXApiIntegrationTests {
         mockMvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(orderJson(userId, activeAssetId, "BUY", "MARKET", "1.00", null)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
 
         mockMvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(orderJson(userId, activeAssetId, "SELL", "MARKET", "1.00", null)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
 
         User inactiveUser = userRepository.findById(userId).orElseThrow();
         inactiveUser.setStatus(UserStatus.INACTIVE);
@@ -449,6 +468,35 @@ class TradeXApiIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(orderJson(userId, activeAssetId, "BUY", "MARKET", "1.00", null)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void apiErrorsUseCommonResponseShapeForRepresentativeFailures() throws Exception {
+        expectApiError(mockMvc.perform(get("/api/portfolio/999999")),
+                404, "Not Found", "User not found with id: 999999", "/api/portfolio/999999");
+
+        expectApiError(mockMvc.perform(get("/api/assets").param("id", "999999")),
+                404, "Not Found", "Asset not found with id: 999999", "/api/assets");
+
+        expectApiError(mockMvc.perform(get("/api/orders/999999")),
+                404, "Not Found", "Order not found with id: 999999", "/api/orders/999999");
+
+        long userId = createUser("Failure User", "failure@example.com");
+        createWallet(userId);
+        long activeAssetId = createActiveAsset("Failure Asset", "FAIL", "share", "STOCK", "100.00");
+
+        expectApiError(postWalletAmount(userId, "withdraw", "1.00"),
+                409, "Conflict", "Withdrawal amount exceeds available funds", "/api/wallet/user/" + userId + "/withdraw");
+
+        expectApiError(mockMvc.perform(post("/api/order")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderJson(userId, activeAssetId, "SELL", "MARKET", "1.00", null))),
+                409, "Conflict", "Holding not found for sell order", "/api/order");
+
+        expectApiError(mockMvc.perform(post("/api/order")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderJson(userId, activeAssetId, "BUY", "MARKET", "0", null))),
+                400, "Bad Request", "quantity must be greater than 0.0", "/api/order");
     }
 
     private long createUser(String name, String email) throws Exception {
@@ -513,7 +561,7 @@ class TradeXApiIntegrationTests {
         return readId(result);
     }
 
-    private org.springframework.test.web.servlet.ResultActions postWalletAmount(long userId, String operation, String amount) throws Exception {
+    private ResultActions postWalletAmount(long userId, String operation, String amount) throws Exception {
         return mockMvc.perform(post("/api/wallet/user/" + userId + "/" + operation)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -546,5 +594,14 @@ class TradeXApiIntegrationTests {
         }
 
         return Long.parseLong(matcher.group(1));
+    }
+
+    private void expectApiError(ResultActions action, int status, String error, String message, String path) throws Exception {
+        action.andExpect(status().is(status))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.status").value(status))
+                .andExpect(jsonPath("$.error").value(error))
+                .andExpect(jsonPath("$.message").value(message))
+                .andExpect(jsonPath("$.path").value(path));
     }
 }

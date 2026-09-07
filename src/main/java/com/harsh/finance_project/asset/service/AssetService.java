@@ -6,13 +6,12 @@ import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.repository.AssetRepository;
 import com.harsh.finance_project.common.web.PageableUtil;
-import jakarta.persistence.NoResultException;
+import com.harsh.finance_project.exception.AssetNotFoundException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Service
 public class AssetService {
@@ -39,9 +38,7 @@ public class AssetService {
     }
 
     public Asset getAssetById(Long id) {
-        Optional<Asset> asset = repository.findById(id);
-
-        return asset.orElseThrow(()-> new NoResultException());
+        return repository.findById(id).orElseThrow(() -> new AssetNotFoundException(id));
     }
 
     public Page<Asset> getAllAssets(Pageable pageable){
@@ -49,7 +46,7 @@ public class AssetService {
     }
 
     public Asset updateAsset(Long id, UpdateAssetRequest dto){
-        Asset asset = repository.findById(id).orElseThrow(()-> new NoResultException());
+        Asset asset = repository.findById(id).orElseThrow(() -> new AssetNotFoundException(id));
 
         if(dto.getName() != null){
             asset.setName(dto.getName());
@@ -77,7 +74,7 @@ public class AssetService {
     }
 
     public void deleteAsset(Long id){
-        Asset asset = repository.findById(id).orElseThrow(()-> new NoResultException());
+        Asset asset = repository.findById(id).orElseThrow(() -> new AssetNotFoundException(id));
 
         repository.delete(asset);
     }
