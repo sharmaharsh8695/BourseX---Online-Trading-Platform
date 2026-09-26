@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -57,23 +58,18 @@ public class WalletController {
     }
 
     @PostMapping("/wallet/user/{userId}/reserve")
-    public ResponseEntity<WalletResponse> reserveFunds(@PathVariable Long userId, @Valid @RequestBody WalletAmountRequest dto) {
-        WalletResponse res = walletService.reserveFunds(userId, dto);
-
-        return ResponseEntity.status(HttpStatus.OK).body(res);
+    public void reserveFunds(@PathVariable Long userId) {
+        throw new AccessDeniedException("Funds are reserved only by order creation");
     }
 
     @PostMapping("/wallet/user/{userId}/release")
-    public ResponseEntity<WalletResponse> releaseReservedFunds(@PathVariable Long userId, @Valid @RequestBody WalletAmountRequest dto) {
-        WalletResponse res = walletService.releaseReservedFunds(userId, dto);
-
-        return ResponseEntity.status(HttpStatus.OK).body(res);
+    public void releaseReservedFunds(@PathVariable Long userId) {
+        throw new AccessDeniedException("Reserved funds are released only by order cancellation");
     }
 
     @PostMapping("/wallet/user/{userId}/capture")
-    public ResponseEntity<WalletResponse> captureReservedFunds(@PathVariable Long userId, @Valid @RequestBody WalletAmountRequest dto) {
-        WalletResponse res = walletService.captureReservedFunds(userId, dto);
-
-        return ResponseEntity.status(HttpStatus.OK).body(res);
+    public void captureReservedFunds(@PathVariable Long userId) {
+        throw new AccessDeniedException("Reserved funds are captured only by order execution");
     }
+
 }

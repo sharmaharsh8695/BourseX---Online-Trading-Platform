@@ -1,13 +1,16 @@
 package com.harsh.finance_project.wallet.model;
 
 import com.harsh.finance_project.user.model.User;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "wallet_transactions")
+@Check(constraints = "amount > 0 AND balance_after >= 0 AND reserved_balance_after >= 0 AND balance_after >= reserved_balance_after")
 public class WalletTransaction {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -50,9 +53,9 @@ public class WalletTransaction {
         this.user = wallet.getUser();
         this.transactionType = transactionType;
         this.status = WalletTransactionStatus.COMPLETED;
-        this.amount = amount;
-        this.balanceAfter = wallet.getBalance();
-        this.reservedBalanceAfter = wallet.getReservedBalance();
+        this.amount = FinancialPrecision.money(amount);
+        this.balanceAfter = FinancialPrecision.money(wallet.getBalance());
+        this.reservedBalanceAfter = FinancialPrecision.money(wallet.getReservedBalance());
         this.reason = reason;
         this.createdAt = createdAt;
     }

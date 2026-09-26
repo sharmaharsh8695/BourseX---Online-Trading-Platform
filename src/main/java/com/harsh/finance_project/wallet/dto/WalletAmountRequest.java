@@ -1,6 +1,7 @@
 package com.harsh.finance_project.wallet.dto;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
@@ -8,6 +9,7 @@ import java.math.BigDecimal;
 public class WalletAmountRequest {
     @NotNull
     @DecimalMin(value = "0.0", inclusive = false)
+    @Digits(integer = 15, fraction = 4)
     private BigDecimal amount;
 
     private String reason;

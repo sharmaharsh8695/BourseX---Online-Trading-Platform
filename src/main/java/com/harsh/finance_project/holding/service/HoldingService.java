@@ -1,14 +1,11 @@
 package com.harsh.finance_project.holding.service;
 
 import com.harsh.finance_project.asset.model.Asset;
-import com.harsh.finance_project.asset.repository.AssetRepository;
 import com.harsh.finance_project.common.web.PageableUtil;
-import com.harsh.finance_project.holding.dto.CreateHoldingRequest;
-import com.harsh.finance_project.holding.dto.HoldingResponse;
-import com.harsh.finance_project.holding.dto.UpdateHoldingRequest;
+import com.harsh.finance_project.common.math.FinancialPrecision;
+import com.harsh.finance_project.exception.InsufficientHoldingException;
 import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
-import com.harsh.finance_project.exception.AssetNotFoundException;
 import com.harsh.finance_project.exception.UserNotFoundException;
 import com.harsh.finance_project.security.ResourceOwnershipService;
 import com.harsh.finance_project.user.model.User;
@@ -18,49 +15,26 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 @Service
 public class HoldingService {
     private final HoldingRepository holdingRepository;
     private final UserRepository userRepository;
-    private final AssetRepository assetRepository;
     private final ResourceOwnershipService ownershipService;
 
-    public HoldingService(HoldingRepository holdingRepository, UserRepository userRepository, AssetRepository assetRepository, ResourceOwnershipService ownershipService) {
+    public HoldingService(HoldingRepository holdingRepository, UserRepository userRepository, ResourceOwnershipService ownershipService) {
         this.holdingRepository = holdingRepository;
         this.userRepository = userRepository;
-        this.assetRepository = assetRepository;
         this.ownershipService = ownershipService;
-    }
-
-    public HoldingResponse createHolding(CreateHoldingRequest dto) {
-        ownershipService.requireOwner(dto.getUserId());
-        User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
-        Asset asset = assetRepository.findById(dto.getAssetId()).orElseThrow(() -> new AssetNotFoundException(dto.getAssetId()));
-
-        Holding holding = new Holding(user, asset, dto.getQuantity(),asset.getCurrentPrice());
-
-        holdingRepository.save(holding);
-
-        return new HoldingResponse(holding);
     }
 
     public Holding getHoldingById(Long id) {
         Holding holding = holdingRepository.findWithUserAndAssetById(id).orElseThrow(() -> new NoResultException());
         ownershipService.requireOwner(holding.getUser().getId());
-        return holding;
-    }
-
-    public Holding updateHolding(Long id, UpdateHoldingRequest dto) {
-        Holding holding = holdingRepository.findById(id).orElseThrow(() -> new NoResultException());
-        ownershipService.requireOwner(holding.getUser().getId());
-
-        if (dto.getQuantity() != null) {
-            holding.setQuantity(dto.getQuantity());
-        }
-
-        holdingRepository.save(holding);
-
         return holding;
     }
 
@@ -78,10 +52,66 @@ public class HoldingService {
         return holdingRepository.findByUserId(userId, PageableUtil.bounded(pageable));
     }
 
-    public void deleteHolding(Long id) {
-        Holding holding = holdingRepository.findById(id).orElseThrow(() -> new NoResultException());
-        ownershipService.requireOwner(holding.getUser().getId());
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordBuyExecution(User user, Asset asset, BigDecimal quantity, BigDecimal executionPrice) {
+        User lockedUser = userRepository.findByIdForUpdate(user.getId())
+                .orElseThrow(() -> new UserNotFoundException(user.getId()));
+        Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(lockedUser.getId(), asset.getId())
+                .orElse(null);
+        if (holding == null) {
+            holding = new Holding(lockedUser, asset, quantity, executionPrice);
+        } else {
+            BigDecimal normalizedQuantity = FinancialPrecision.quantity(quantity);
+            BigDecimal normalizedPrice = FinancialPrecision.price(executionPrice);
+            BigDecimal previousQuantity = holding.getQuantity();
+            BigDecimal newQuantity = FinancialPrecision.quantity(previousQuantity.add(normalizedQuantity));
+            BigDecimal previousValue = previousQuantity.multiply(holding.getAvgPrice());
+            BigDecimal executionValue = normalizedQuantity.multiply(normalizedPrice);
+            holding.setQuantity(newQuantity);
+            holding.setAvgPrice(previousValue.add(executionValue)
+                    .divide(newQuantity, FinancialPrecision.PRICE_SCALE, java.math.RoundingMode.HALF_UP));
+        }
+        holdingRepository.save(holding);
+    }
 
-        holdingRepository.delete(holding);
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reserveSellQuantity(Long userId, Long assetId, BigDecimal quantity) {
+        Holding holding = findLocked(userId, assetId);
+        if (holding.getAvailableQuantity().compareTo(quantity) < 0) {
+            throw new InsufficientHoldingException("Insufficient available holding quantity");
+        }
+        holding.setReservedQuantity(FinancialPrecision.quantity(
+                holding.getReservedQuantity().add(FinancialPrecision.quantity(quantity))));
+        holdingRepository.save(holding);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releaseSellReservation(Long userId, Long assetId, BigDecimal reservedQuantity) {
+        Holding holding = findLocked(userId, assetId);
+        if (holding.getReservedQuantity().compareTo(reservedQuantity) < 0) {
+            throw new InsufficientHoldingException("Reserved holding quantity is insufficient");
+        }
+        holding.setReservedQuantity(FinancialPrecision.quantity(
+                holding.getReservedQuantity().subtract(FinancialPrecision.quantity(reservedQuantity))));
+        holdingRepository.save(holding);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void consumeSellReservation(Long userId, Long assetId, BigDecimal quantity, BigDecimal reservedQuantity) {
+        Holding holding = findLocked(userId, assetId);
+        if (holding.getReservedQuantity().compareTo(reservedQuantity) < 0
+                || holding.getQuantity().compareTo(quantity) < 0) {
+            throw new InsufficientHoldingException("Reserved holding quantity is insufficient");
+        }
+        holding.setReservedQuantity(FinancialPrecision.quantity(
+                holding.getReservedQuantity().subtract(FinancialPrecision.quantity(reservedQuantity))));
+        holding.setQuantity(FinancialPrecision.quantity(
+                holding.getQuantity().subtract(FinancialPrecision.quantity(quantity))));
+        holdingRepository.save(holding);
+    }
+
+    private Holding findLocked(Long userId, Long assetId) {
+        return holdingRepository.findByUserIdAndAssetIdForUpdate(userId, assetId)
+                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
     }
 }

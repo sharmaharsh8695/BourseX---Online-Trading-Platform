@@ -1,6 +1,8 @@
 package com.harsh.finance_project.asset.dto;
 
 import com.harsh.finance_project.asset.model.AssetType;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
@@ -15,6 +17,8 @@ public class CreateAssetRequest {
     @NotNull
     private AssetType assetType;
     @NotNull
+    @DecimalMin(value = "0.0", inclusive = false)
+    @Digits(integer = 15, fraction = 4)
     private BigDecimal currentPrice;
 
     public String getName() {

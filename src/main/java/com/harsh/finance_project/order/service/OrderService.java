@@ -4,14 +4,12 @@ import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.repository.AssetRepository;
 import com.harsh.finance_project.common.web.PageableUtil;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import com.harsh.finance_project.exception.AssetNotFoundException;
-import com.harsh.finance_project.exception.InsufficientBalanceException;
-import com.harsh.finance_project.exception.InsufficientHoldingException;
 import com.harsh.finance_project.exception.InvalidOrderException;
 import com.harsh.finance_project.exception.OrderNotFoundException;
 import com.harsh.finance_project.exception.UserNotFoundException;
-import com.harsh.finance_project.holding.model.Holding;
-import com.harsh.finance_project.holding.repository.HoldingRepository;
+import com.harsh.finance_project.holding.service.HoldingService;
 import com.harsh.finance_project.order.dto.CreateOrderRequest;
 import com.harsh.finance_project.order.dto.OrderResponse;
 import com.harsh.finance_project.order.model.Order;
@@ -25,13 +23,7 @@ import com.harsh.finance_project.trade.repository.TradeRepository;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.model.UserStatus;
 import com.harsh.finance_project.user.repository.UserRepository;
-import com.harsh.finance_project.wallet.model.Wallet;
-import com.harsh.finance_project.wallet.model.WalletStatus;
-import com.harsh.finance_project.wallet.model.WalletTransaction;
-import com.harsh.finance_project.wallet.model.WalletTransactionType;
-import com.harsh.finance_project.wallet.repository.WalletRepository;
-import com.harsh.finance_project.wallet.repository.WalletTransactionRepository;
-import jakarta.persistence.NoResultException;
+import com.harsh.finance_project.wallet.service.WalletService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,7 +31,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Service
@@ -48,19 +39,17 @@ public class OrderService {
     private final TradeRepository tradeRepository;
     private final UserRepository userRepository;
     private final AssetRepository assetRepository;
-    private final WalletRepository walletRepository;
-    private final WalletTransactionRepository walletTransactionRepository;
-    private final HoldingRepository holdingRepository;
+    private final WalletService walletService;
+    private final HoldingService holdingService;
     private final ResourceOwnershipService ownershipService;
 
-    public OrderService(OrderRepository orderRepository, TradeRepository tradeRepository, UserRepository userRepository, AssetRepository assetRepository, WalletRepository walletRepository, WalletTransactionRepository walletTransactionRepository, HoldingRepository holdingRepository, ResourceOwnershipService ownershipService) {
+    public OrderService(OrderRepository orderRepository, TradeRepository tradeRepository, UserRepository userRepository, AssetRepository assetRepository, WalletService walletService, HoldingService holdingService, ResourceOwnershipService ownershipService) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.userRepository = userRepository;
         this.assetRepository = assetRepository;
-        this.walletRepository = walletRepository;
-        this.walletTransactionRepository = walletTransactionRepository;
-        this.holdingRepository = holdingRepository;
+        this.walletService = walletService;
+        this.holdingService = holdingService;
         this.ownershipService = ownershipService;
     }
 
@@ -74,13 +63,25 @@ public class OrderService {
         validateUserActive(user);
         validateAssetActive(asset);
         validatePrice(dto);
-
-        LocalDateTime now = LocalDateTime.now();
-        Order order = new Order(user, asset, dto.getOrderSide(), dto.getOrderCategory(), dto.getQuantity(), dto.getRequestedPrice(), now);
+        BigDecimal price = dto.getOrderCategory() == OrderCategory.MARKET
+                ? asset.getCurrentPrice()
+                : dto.getRequestedPrice();
+        BigDecimal quantity = FinancialPrecision.quantity(dto.getQuantity());
+        BigDecimal settlementAmount = FinancialPrecision.settlementAmount(quantity, price);
+        validatePositiveAmount(settlementAmount, "Order total must be at least 0.0001");
 
         if (dto.getOrderSide() == OrderSide.BUY) {
-            reserveBuyFunds(order, getOrderPrice(order));
+            user = lockUserForBuy(user.getId());
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Order order = new Order(user, asset, dto.getOrderSide(), dto.getOrderCategory(), quantity,
+                dto.getRequestedPrice() == null ? null : FinancialPrecision.price(dto.getRequestedPrice()), now);
+
+        if (dto.getOrderSide() == OrderSide.BUY) {
+            reserveBuyFunds(order, settlementAmount);
         } else {
+            walletService.lockActiveWalletForOrder(order.getUser().getId());
             reserveSellHolding(order);
         }
 
@@ -143,6 +144,9 @@ public class OrderService {
 
         validateUserActive(order.getUser());
         validateAssetActive(order.getAsset());
+        if (order.getOrderSide() == OrderSide.BUY) {
+            lockUserForBuy(order.getUser().getId());
+        }
         executeOrder(order, getOrderPrice(order));
 
         return new OrderResponse(order);
@@ -169,131 +173,46 @@ public class OrderService {
         orderRepository.save(order);
     }
 
-    private void reserveBuyFunds(Order order, BigDecimal price) {
-        BigDecimal requiredAmount = order.getQuantity().multiply(price);
-        Wallet wallet = getLockedActiveWallet(order.getUser().getId());
-
-        if (wallet.getAvailableBalance().compareTo(requiredAmount) < 0) {
-            throw new InsufficientBalanceException("Insufficient available wallet funds");
-        }
-
-        wallet.setReservedBalance(wallet.getReservedBalance().add(requiredAmount));
-        saveWalletMovement(wallet, WalletTransactionType.RESERVE, requiredAmount, "BUY order funds reserved");
+    private void reserveBuyFunds(Order order, BigDecimal requiredAmount) {
+        walletService.reserveOrderFunds(order.getUser().getId(), requiredAmount);
         order.setReservedAmount(requiredAmount);
     }
 
     private void releaseBuyFunds(Order order) {
         BigDecimal amount = order.getReservedAmount();
-        Wallet wallet = getLockedActiveWallet(order.getUser().getId());
-
-        if (wallet.getReservedBalance().compareTo(amount) < 0) {
-            throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
-        }
-
-        wallet.setReservedBalance(wallet.getReservedBalance().subtract(amount));
-        saveWalletMovement(wallet, WalletTransactionType.RELEASE_RESERVED, amount, "BUY order funds released");
+        walletService.releaseOrderFunds(order.getUser().getId(), amount);
         order.setReservedAmount(BigDecimal.ZERO);
     }
 
     private void executeBuy(Order order, BigDecimal executionPrice, LocalDateTime now) {
-        BigDecimal totalAmount = order.getQuantity().multiply(executionPrice);
-        Wallet wallet = getLockedActiveWallet(order.getUser().getId());
-
-        if (order.getReservedAmount().compareTo(totalAmount) < 0 || wallet.getReservedBalance().compareTo(totalAmount) < 0) {
-            throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
-        }
-
-        wallet.setReservedBalance(wallet.getReservedBalance().subtract(totalAmount));
-        wallet.setBalance(wallet.getBalance().subtract(totalAmount));
-        saveWalletMovement(wallet, WalletTransactionType.CAPTURE_RESERVED, totalAmount, "BUY trade executed");
-
-        if (order.getReservedAmount().compareTo(totalAmount) > 0) {
-            BigDecimal unusedAmount = order.getReservedAmount().subtract(totalAmount);
-            wallet.setReservedBalance(wallet.getReservedBalance().subtract(unusedAmount));
-            saveWalletMovement(wallet, WalletTransactionType.RELEASE_RESERVED, unusedAmount, "Unused BUY order funds released");
-        }
-
-        Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElse(null);
-
-        if (holding == null) {
-            holding = new Holding(order.getUser(), order.getAsset(), order.getQuantity(), executionPrice);
-        } else {
-            BigDecimal oldQuantity = holding.getQuantity();
-            BigDecimal newQuantity = oldQuantity.add(order.getQuantity());
-            BigDecimal oldValue = oldQuantity.multiply(holding.getAvgPrice());
-            BigDecimal newValue = order.getQuantity().multiply(executionPrice);
-            holding.setQuantity(newQuantity);
-            holding.setAvgPrice(oldValue.add(newValue).divide(newQuantity, 4, RoundingMode.HALF_UP));
-        }
-
-        holdingRepository.save(holding);
+        BigDecimal totalAmount = FinancialPrecision.settlementAmount(order.getQuantity(), executionPrice);
+        walletService.captureOrderFunds(order.getUser().getId(), totalAmount, order.getReservedAmount());
+        holdingService.recordBuyExecution(order.getUser(), order.getAsset(), order.getQuantity(), executionPrice);
         order.setReservedAmount(BigDecimal.ZERO);
         order.setUpdatedAt(now);
     }
 
     private void reserveSellHolding(Order order) {
-        Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
-
-        if (holding.getAvailableQuantity().compareTo(order.getQuantity()) < 0) {
-            throw new InsufficientHoldingException("Insufficient available holding quantity");
-        }
-
-        holding.setReservedQuantity(holding.getReservedQuantity().add(order.getQuantity()));
-        holdingRepository.save(holding);
+        holdingService.reserveSellQuantity(order.getUser().getId(), order.getAsset().getId(), order.getQuantity());
         order.setReservedQuantity(order.getQuantity());
     }
 
     private void releaseSellHolding(Order order) {
-        Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
-
-        if (holding.getReservedQuantity().compareTo(order.getReservedQuantity()) < 0) {
-            throw new InsufficientHoldingException("Reserved holding quantity is insufficient");
-        }
-
-        holding.setReservedQuantity(holding.getReservedQuantity().subtract(order.getReservedQuantity()));
-        holdingRepository.save(holding);
+        holdingService.releaseSellReservation(order.getUser().getId(), order.getAsset().getId(),
+                order.getReservedQuantity());
         order.setReservedQuantity(BigDecimal.ZERO);
     }
 
     private void executeSell(Order order, BigDecimal executionPrice, LocalDateTime now) {
-        Holding holding = holdingRepository.findByUserIdAndAssetIdForUpdate(order.getUser().getId(), order.getAsset().getId())
-                .orElseThrow(() -> new InsufficientHoldingException("Holding not found for sell order"));
+        walletService.lockActiveWalletForOrder(order.getUser().getId());
+        holdingService.consumeSellReservation(order.getUser().getId(), order.getAsset().getId(),
+                order.getQuantity(), order.getReservedQuantity());
 
-        if (holding.getReservedQuantity().compareTo(order.getReservedQuantity()) < 0 || holding.getQuantity().compareTo(order.getQuantity()) < 0) {
-            throw new InsufficientHoldingException("Reserved holding quantity is insufficient");
-        }
-
-        holding.setReservedQuantity(holding.getReservedQuantity().subtract(order.getReservedQuantity()));
-        holding.setQuantity(holding.getQuantity().subtract(order.getQuantity()));
-        holdingRepository.save(holding);
-
-        BigDecimal totalAmount = order.getQuantity().multiply(executionPrice);
-        Wallet wallet = getLockedActiveWallet(order.getUser().getId());
-        wallet.setBalance(wallet.getBalance().add(totalAmount));
-        saveWalletMovement(wallet, WalletTransactionType.TRADE_SELL, totalAmount, "SELL trade executed");
+        BigDecimal totalAmount = FinancialPrecision.settlementAmount(order.getQuantity(), executionPrice);
+        walletService.creditTradeSale(order.getUser().getId(), totalAmount);
 
         order.setReservedQuantity(BigDecimal.ZERO);
         order.setUpdatedAt(now);
-    }
-
-    private Wallet getLockedActiveWallet(Long userId) {
-        Wallet wallet = walletRepository.findByUserIdForUpdate(userId).orElseThrow(() -> new NoResultException());
-
-        if (wallet.getStatus() != WalletStatus.ACTIVE) {
-            throw new InvalidOrderException("Wallet is not active");
-        }
-
-        return wallet;
-    }
-
-    private void saveWalletMovement(Wallet wallet, WalletTransactionType type, BigDecimal amount, String reason) {
-        LocalDateTime now = LocalDateTime.now();
-        wallet.setUpdatedAt(now);
-        walletRepository.save(wallet);
-        walletTransactionRepository.save(new WalletTransaction(wallet, type, amount, reason, now));
     }
 
     private BigDecimal getOrderPrice(Order order) {
@@ -302,6 +221,11 @@ public class OrderService {
         }
 
         return order.getRequestedPrice();
+    }
+
+    private User lockUserForBuy(Long userId) {
+        return userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
     }
 
     private void validatePrice(CreateOrderRequest dto) {
@@ -325,6 +249,9 @@ public class OrderService {
     private void validateAssetActive(Asset asset) {
         if (asset.getStatus() != AssetStatus.ACTIVE) {
             throw new InvalidOrderException("Asset is not active");
+        }
+        if (asset.getCurrentPrice() == null || asset.getCurrentPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOrderException("Asset price must be greater than zero");
         }
     }
 }

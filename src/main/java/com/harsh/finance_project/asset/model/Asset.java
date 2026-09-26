@@ -1,7 +1,9 @@
 package com.harsh.finance_project.asset.model;
 
 import com.harsh.finance_project.holding.model.Holding;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -9,6 +11,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "assets")
+@Check(constraints = "current_price > 0")
 public class Asset {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,7 +52,7 @@ public class Asset {
         this.unit = unit;
         this.status = status;
         this.assetType = assetType;
-        this.currentPrice = currentPrice;
+        this.currentPrice = FinancialPrecision.price(currentPrice);
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -111,7 +114,7 @@ public class Asset {
     }
 
     public void setCurrentPrice(BigDecimal currentPrice) {
-        this.currentPrice = currentPrice;
+        this.currentPrice = FinancialPrecision.price(currentPrice);
     }
 
     public void setUpdatedAt(LocalDateTime updatedAt) {

@@ -19,6 +19,7 @@ import com.harsh.finance_project.wallet.repository.WalletTransactionRepository;
 import jakarta.persistence.NoResultException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -97,60 +98,69 @@ public class WalletService {
         return new WalletResponse(wallet);
     }
 
-    @Transactional
-    public WalletResponse reserveFunds(Long userId, WalletAmountRequest dto) {
-        ownershipService.requireOwner(userId);
-        Wallet wallet = getWalletByUserForUpdate(userId);
-        validateActive(wallet);
-        validatePositiveAmount(dto.getAmount());
-
-        if (wallet.getAvailableBalance().compareTo(dto.getAmount()) < 0) {
-            throw new InsufficientBalanceException("Reserve amount exceeds available funds");
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reserveOrderFunds(Long userId, BigDecimal amount) {
+        Wallet wallet = getLockedActiveWallet(userId);
+        validatePositiveAmount(amount);
+        if (wallet.getAvailableBalance().compareTo(amount) < 0) {
+            throw new InsufficientBalanceException("Insufficient available wallet funds");
         }
-
-        wallet.setReservedBalance(wallet.getReservedBalance().add(dto.getAmount()));
-        saveWalletMovement(wallet, WalletTransactionType.RESERVE, dto.getAmount(), dto.getReason());
-
-        return new WalletResponse(wallet);
+        wallet.setReservedBalance(wallet.getReservedBalance().add(amount));
+        saveWalletMovement(wallet, WalletTransactionType.RESERVE, amount, "BUY order funds reserved");
     }
 
-    @Transactional
-    public WalletResponse releaseReservedFunds(Long userId, WalletAmountRequest dto) {
-        ownershipService.requireOwner(userId);
-        Wallet wallet = getWalletByUserForUpdate(userId);
-        validateActive(wallet);
-        validatePositiveAmount(dto.getAmount());
-
-        if (wallet.getReservedBalance().compareTo(dto.getAmount()) < 0) {
-            throw new InsufficientBalanceException("Release amount exceeds reserved funds");
-        }
-
-        wallet.setReservedBalance(wallet.getReservedBalance().subtract(dto.getAmount()));
-        saveWalletMovement(wallet, WalletTransactionType.RELEASE_RESERVED, dto.getAmount(), dto.getReason());
-
-        return new WalletResponse(wallet);
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockActiveWalletForOrder(Long userId) {
+        getLockedActiveWallet(userId);
     }
 
-    @Transactional
-    public WalletResponse captureReservedFunds(Long userId, WalletAmountRequest dto) {
-        ownershipService.requireOwner(userId);
-        Wallet wallet = getWalletByUserForUpdate(userId);
-        validateActive(wallet);
-        validatePositiveAmount(dto.getAmount());
-
-        if (wallet.getReservedBalance().compareTo(dto.getAmount()) < 0) {
-            throw new InsufficientBalanceException("Capture amount exceeds reserved funds");
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releaseOrderFunds(Long userId, BigDecimal amount) {
+        Wallet wallet = getLockedActiveWallet(userId);
+        if (wallet.getReservedBalance().compareTo(amount) < 0) {
+            throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
         }
+        wallet.setReservedBalance(wallet.getReservedBalance().subtract(amount));
+        saveWalletMovement(wallet, WalletTransactionType.RELEASE_RESERVED, amount, "BUY order funds released");
+    }
 
-        wallet.setReservedBalance(wallet.getReservedBalance().subtract(dto.getAmount()));
-        wallet.setBalance(wallet.getBalance().subtract(dto.getAmount()));
-        saveWalletMovement(wallet, WalletTransactionType.CAPTURE_RESERVED, dto.getAmount(), dto.getReason());
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void captureOrderFunds(Long userId, BigDecimal amount, BigDecimal orderReservedAmount) {
+        Wallet wallet = getLockedActiveWallet(userId);
+        if (orderReservedAmount.compareTo(amount) < 0 || wallet.getReservedBalance().compareTo(amount) < 0) {
+            throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
+        }
+        wallet.setReservedBalance(wallet.getReservedBalance().subtract(amount));
+        wallet.setBalance(wallet.getBalance().subtract(amount));
+        saveWalletMovement(wallet, WalletTransactionType.CAPTURE_RESERVED, amount, "BUY trade executed");
 
-        return new WalletResponse(wallet);
+        if (orderReservedAmount.compareTo(amount) > 0) {
+            BigDecimal unusedAmount = orderReservedAmount.subtract(amount);
+            if (wallet.getReservedBalance().compareTo(unusedAmount) < 0) {
+                throw new InsufficientBalanceException("Reserved wallet funds are insufficient");
+            }
+            wallet.setReservedBalance(wallet.getReservedBalance().subtract(unusedAmount));
+            saveWalletMovement(wallet, WalletTransactionType.RELEASE_RESERVED, unusedAmount,
+                    "Unused BUY order funds released");
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void creditTradeSale(Long userId, BigDecimal amount) {
+        Wallet wallet = getLockedActiveWallet(userId);
+        validatePositiveAmount(amount);
+        wallet.setBalance(wallet.getBalance().add(amount));
+        saveWalletMovement(wallet, WalletTransactionType.TRADE_SELL, amount, "SELL trade executed");
     }
 
     private Wallet getWalletByUserForUpdate(Long userId) {
         return walletRepository.findByUserIdForUpdate(userId).orElseThrow(() -> new NoResultException());
+    }
+
+    private Wallet getLockedActiveWallet(Long userId) {
+        Wallet wallet = getWalletByUserForUpdate(userId);
+        validateActive(wallet);
+        return wallet;
     }
 
     private void saveWalletMovement(Wallet wallet, WalletTransactionType type, BigDecimal amount, String reason) {

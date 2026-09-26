@@ -2,13 +2,16 @@ package com.harsh.finance_project.order.model;
 
 import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.user.model.User;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity(name = "TradeOrder")
 @Table(name = "orders")
+@Check(constraints = "quantity > 0 AND (requested_price IS NULL OR requested_price > 0) AND (reserved_amount IS NULL OR reserved_amount >= 0) AND (reserved_quantity IS NULL OR (reserved_quantity >= 0 AND reserved_quantity <= quantity))")
 public class Order {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -60,8 +63,8 @@ public class Order {
         this.asset = asset;
         this.orderSide = orderSide;
         this.orderCategory = orderCategory;
-        this.quantity = quantity;
-        this.requestedPrice = requestedPrice;
+        this.quantity = FinancialPrecision.quantity(quantity);
+        this.requestedPrice = requestedPrice == null ? null : FinancialPrecision.price(requestedPrice);
         this.reservedAmount = BigDecimal.ZERO;
         this.reservedQuantity = BigDecimal.ZERO;
         this.status = OrderStatus.PENDING;
@@ -122,11 +125,11 @@ public class Order {
     }
 
     public void setReservedAmount(BigDecimal reservedAmount) {
-        this.reservedAmount = reservedAmount;
+        this.reservedAmount = FinancialPrecision.money(reservedAmount);
     }
 
     public void setReservedQuantity(BigDecimal reservedQuantity) {
-        this.reservedQuantity = reservedQuantity;
+        this.reservedQuantity = FinancialPrecision.quantity(reservedQuantity);
     }
 
     public void setStatus(OrderStatus status) {

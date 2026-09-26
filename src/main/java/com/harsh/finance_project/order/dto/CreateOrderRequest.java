@@ -3,6 +3,7 @@ package com.harsh.finance_project.order.dto;
 import com.harsh.finance_project.order.model.OrderCategory;
 import com.harsh.finance_project.order.model.OrderSide;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
@@ -22,8 +23,10 @@ public class CreateOrderRequest {
 
     @NotNull
     @DecimalMin(value = "0.0", inclusive = false)
+    @Digits(integer = 15, fraction = 4)
     private BigDecimal quantity;
 
+    @Digits(integer = 15, fraction = 4)
     private BigDecimal requestedPrice;
 
     public Long getUserId() {

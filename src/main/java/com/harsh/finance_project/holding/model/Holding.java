@@ -2,12 +2,17 @@ package com.harsh.finance_project.holding.model;
 
 import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.user.model.User;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "holdings")
+@Table(name = "holdings", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_holding_user_asset", columnNames = {"user_id", "asset_id"})
+})
+@Check(constraints = "quantity >= 0 AND (reserved_quantity IS NULL OR (reserved_quantity >= 0 AND reserved_quantity <= quantity))")
 public class Holding {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,9 +41,9 @@ public class Holding {
     public Holding(User user, Asset asset, BigDecimal quantity, BigDecimal avgPrice) {
         this.user = user;
         this.asset = asset;
-        this.quantity = quantity;
+        this.quantity = FinancialPrecision.quantity(quantity);
         this.reservedQuantity = BigDecimal.ZERO;
-        this.avgPrice = avgPrice;
+        this.avgPrice = FinancialPrecision.price(avgPrice);
     }
 
     public Long getId() {
@@ -74,11 +79,11 @@ public class Holding {
     }
 
     public void setQuantity(BigDecimal quantity) {
-        this.quantity = quantity;
+        this.quantity = FinancialPrecision.quantity(quantity);
     }
 
     public void setReservedQuantity(BigDecimal reservedQuantity) {
-        this.reservedQuantity = reservedQuantity;
+        this.reservedQuantity = FinancialPrecision.quantity(reservedQuantity);
     }
 
     public BigDecimal getAvgPrice() {
@@ -86,6 +91,6 @@ public class Holding {
     }
 
     public void setAvgPrice(BigDecimal avgPrice) {
-        this.avgPrice = avgPrice;
+        this.avgPrice = FinancialPrecision.price(avgPrice);
     }
 }

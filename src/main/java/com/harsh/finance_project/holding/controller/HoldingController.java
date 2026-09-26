@@ -1,13 +1,11 @@
 package com.harsh.finance_project.holding.controller;
 
 import com.harsh.finance_project.common.dto.PageResponse;
-import com.harsh.finance_project.holding.dto.CreateHoldingRequest;
 import com.harsh.finance_project.holding.dto.HoldingResponse;
-import com.harsh.finance_project.holding.dto.UpdateHoldingRequest;
 import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.service.HoldingService;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,10 +21,8 @@ public class HoldingController {
     }
 
     @PostMapping("/holding")
-    public ResponseEntity<HoldingResponse> createHolding(@Valid @RequestBody CreateHoldingRequest dto) {
-        HoldingResponse res = holdingService.createHolding(dto);
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    public void createHolding() {
+        throw new AccessDeniedException("Holdings are created only by trade execution");
     }
 
     @GetMapping(value = "/holding", params = "id")
@@ -56,16 +52,13 @@ public class HoldingController {
     }
 
     @PutMapping("/holding")
-    public ResponseEntity<HoldingResponse> updateHolding(@RequestParam @NotNull Long id, @RequestBody @Valid UpdateHoldingRequest dto) {
-        Holding holding = holdingService.updateHolding(id, dto);
-
-        return ResponseEntity.status(HttpStatus.OK).body(new HoldingResponse(holding));
+    public void updateHolding() {
+        throw new AccessDeniedException("Holdings are updated only by trade execution");
     }
 
     @DeleteMapping("/holdings/{id}")
-    public ResponseEntity<String> deleteHolding(@PathVariable Long id) {
-        holdingService.deleteHolding(id);
-
-        return ResponseEntity.status(HttpStatus.OK).body("Holding Deleted Successfully");
+    public void deleteHolding(@PathVariable Long id) {
+        throw new AccessDeniedException("Holdings cannot be deleted through the API");
     }
+
 }

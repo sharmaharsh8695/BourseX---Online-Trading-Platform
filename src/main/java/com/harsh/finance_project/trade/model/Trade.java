@@ -4,13 +4,18 @@ import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.order.model.Order;
 import com.harsh.finance_project.order.model.OrderSide;
 import com.harsh.finance_project.user.model.User;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "trades")
+@Table(name = "trades", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_trade_order", columnNames = "order_id")
+})
+@Check(constraints = "quantity > 0 AND execution_price > 0 AND total_amount > 0")
 public class Trade {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -51,9 +56,9 @@ public class Trade {
         this.user = order.getUser();
         this.asset = order.getAsset();
         this.orderSide = order.getOrderSide();
-        this.quantity = order.getQuantity();
-        this.executionPrice = executionPrice;
-        this.totalAmount = order.getQuantity().multiply(executionPrice);
+        this.quantity = FinancialPrecision.quantity(order.getQuantity());
+        this.executionPrice = FinancialPrecision.price(executionPrice);
+        this.totalAmount = FinancialPrecision.settlementAmount(this.quantity, this.executionPrice);
         this.executedAt = executedAt;
     }
 

@@ -6,12 +6,14 @@ import com.harsh.finance_project.asset.model.Asset;
 import com.harsh.finance_project.asset.model.AssetStatus;
 import com.harsh.finance_project.asset.repository.AssetRepository;
 import com.harsh.finance_project.common.web.PageableUtil;
+import com.harsh.finance_project.common.math.FinancialPrecision;
 import com.harsh.finance_project.exception.AssetNotFoundException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
@@ -24,13 +26,14 @@ public class AssetService {
 
     @PreAuthorize("hasRole('ADMIN')")
     public Asset createAsset(CreateAssetRequest dto){
+        validatePositivePrice(dto.getCurrentPrice());
         LocalDateTime now = LocalDateTime.now();
         Asset asset = new Asset(dto.getName(),
                 dto.getSymbol(),
                 dto.getUnit(),
                 AssetStatus.INACTIVE,
                 dto.getAssetType(),
-                dto.getCurrentPrice(),
+                FinancialPrecision.price(dto.getCurrentPrice()),
                 now,
                 now);
 
@@ -50,6 +53,9 @@ public class AssetService {
     @PreAuthorize("hasRole('ADMIN')")
     public Asset updateAsset(Long id, UpdateAssetRequest dto){
         Asset asset = repository.findById(id).orElseThrow(() -> new AssetNotFoundException(id));
+        validatePositivePrice(dto.getCurrentPrice() == null
+                ? asset.getCurrentPrice()
+                : dto.getCurrentPrice());
 
         if(dto.getName() != null){
             asset.setName(dto.getName());
@@ -67,13 +73,19 @@ public class AssetService {
             asset.setAssetType(dto.getAssetType());
         }
         if(dto.getCurrentPrice() != null){
-            asset.setCurrentPrice(dto.getCurrentPrice());
+            asset.setCurrentPrice(FinancialPrecision.price(dto.getCurrentPrice()));
         }
         asset.setUpdatedAt(LocalDateTime.now());
 
         repository.save(asset);
 
         return asset;
+    }
+
+    private void validatePositivePrice(BigDecimal price) {
+        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Asset currentPrice must be greater than zero");
+        }
     }
 
     @PreAuthorize("hasRole('ADMIN')")
