@@ -9,6 +9,7 @@ import com.harsh.finance_project.common.web.PageableUtil;
 import com.harsh.finance_project.exception.AssetNotFoundException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ public class AssetService {
         this.repository = repository;
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     public Asset createAsset(CreateAssetRequest dto){
         LocalDateTime now = LocalDateTime.now();
         Asset asset = new Asset(dto.getName(),
@@ -45,6 +47,7 @@ public class AssetService {
         return repository.findAll(PageableUtil.bounded(pageable));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     public Asset updateAsset(Long id, UpdateAssetRequest dto){
         Asset asset = repository.findById(id).orElseThrow(() -> new AssetNotFoundException(id));
 
@@ -73,6 +76,7 @@ public class AssetService {
         return asset;
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     public void deleteAsset(Long id){
         Asset asset = repository.findById(id).orElseThrow(() -> new AssetNotFoundException(id));
 

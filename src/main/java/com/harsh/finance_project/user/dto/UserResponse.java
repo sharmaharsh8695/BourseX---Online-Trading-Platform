@@ -8,7 +8,6 @@ public class UserResponse {
     public Long id;
     public String name;
     public String email;
-    public String password;
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
 
@@ -17,7 +16,6 @@ public class UserResponse {
         this.id = user.getId();
         this.name = user.getName();
         this.email = user.getEmail();
-        this.password = user.getPassword();
         this.createdAt = user.getCreatedAt();
         this.updatedAt = user.getUpdatedAt();
     }

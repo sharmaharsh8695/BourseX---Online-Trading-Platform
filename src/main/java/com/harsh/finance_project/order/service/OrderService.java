@@ -19,6 +19,7 @@ import com.harsh.finance_project.order.model.OrderCategory;
 import com.harsh.finance_project.order.model.OrderSide;
 import com.harsh.finance_project.order.model.OrderStatus;
 import com.harsh.finance_project.order.repository.OrderRepository;
+import com.harsh.finance_project.security.ResourceOwnershipService;
 import com.harsh.finance_project.trade.model.Trade;
 import com.harsh.finance_project.trade.repository.TradeRepository;
 import com.harsh.finance_project.user.model.User;
@@ -33,6 +34,7 @@ import com.harsh.finance_project.wallet.repository.WalletTransactionRepository;
 import jakarta.persistence.NoResultException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,8 +51,9 @@ public class OrderService {
     private final WalletRepository walletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final HoldingRepository holdingRepository;
+    private final ResourceOwnershipService ownershipService;
 
-    public OrderService(OrderRepository orderRepository, TradeRepository tradeRepository, UserRepository userRepository, AssetRepository assetRepository, WalletRepository walletRepository, WalletTransactionRepository walletTransactionRepository, HoldingRepository holdingRepository) {
+    public OrderService(OrderRepository orderRepository, TradeRepository tradeRepository, UserRepository userRepository, AssetRepository assetRepository, WalletRepository walletRepository, WalletTransactionRepository walletTransactionRepository, HoldingRepository holdingRepository, ResourceOwnershipService ownershipService) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.userRepository = userRepository;
@@ -58,10 +61,12 @@ public class OrderService {
         this.walletRepository = walletRepository;
         this.walletTransactionRepository = walletTransactionRepository;
         this.holdingRepository = holdingRepository;
+        this.ownershipService = ownershipService;
     }
 
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest dto) {
+        ownershipService.requireOwner(dto.getUserId());
         validatePositiveAmount(dto.getQuantity(), "Quantity must be greater than zero");
 
         User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
@@ -89,20 +94,25 @@ public class OrderService {
     }
 
     public Order getOrderById(Long id) {
-        return orderRepository.findWithUserAndAssetById(id).orElseThrow(() -> new OrderNotFoundException(id));
+        Order order = orderRepository.findWithUserAndAssetById(id).orElseThrow(() -> new OrderNotFoundException(id));
+        ownershipService.requireOwner(order.getUser().getId());
+        return order;
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     public Page<Order> getAllOrders(Pageable pageable) {
         return orderRepository.findAll(PageableUtil.bounded(pageable));
     }
 
     public Page<Order> getOrdersByUser(Long userId, Pageable pageable) {
+        ownershipService.requireOwner(userId);
         return orderRepository.findByUserId(userId, PageableUtil.bounded(pageable));
     }
 
     @Transactional
     public OrderResponse cancelOrder(Long id) {
         Order order = orderRepository.findByIdForUpdate(id).orElseThrow(() -> new OrderNotFoundException(id));
+        ownershipService.requireOwner(order.getUser().getId());
 
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new InvalidOrderException("Only pending orders can be cancelled");
@@ -125,6 +135,7 @@ public class OrderService {
     @Transactional
     public OrderResponse executeOrder(Long id) {
         Order order = orderRepository.findByIdForUpdate(id).orElseThrow(() -> new OrderNotFoundException(id));
+        ownershipService.requireOwner(order.getUser().getId());
 
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new InvalidOrderException("Only pending orders can be executed");

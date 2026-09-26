@@ -14,6 +14,9 @@ public class CreateUserRequest {
     @NotNull
     private String password;
 
+    public CreateUserRequest() {
+    }
+
     public CreateUserRequest(String name, String email, String password) {
         this.name = name;
         this.email = email;

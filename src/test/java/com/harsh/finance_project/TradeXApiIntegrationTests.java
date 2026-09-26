@@ -7,6 +7,7 @@ import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
 import com.harsh.finance_project.order.model.OrderStatus;
 import com.harsh.finance_project.order.repository.OrderRepository;
+import com.harsh.finance_project.security.ResourceOwnershipService;
 import com.harsh.finance_project.trade.repository.TradeRepository;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.model.UserStatus;
@@ -20,7 +21,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -28,16 +33,22 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.math.BigDecimal;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doNothing;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("api-test")
 class TradeXApiIntegrationTests {
+    @MockitoBean
+    private ResourceOwnershipService ownershipService;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -64,6 +75,15 @@ class TradeXApiIntegrationTests {
 
     @BeforeEach
     void cleanDatabase() {
+        doNothing().when(ownershipService).requireOwner(anyLong());
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "api-test-admin",
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))
+                )
+        );
+
         tradeRepository.deleteAllInBatch();
         orderRepository.deleteAllInBatch();
         walletTransactionRepository.deleteAllInBatch();
@@ -77,7 +97,7 @@ class TradeXApiIntegrationTests {
     void userApiCreatesUserAndRejectsInvalidOrDuplicateEmail() throws Exception {
         long userId = createUser("Asha Rao", "asha@example.com");
 
-        mockMvc.perform(post("/api/user")
+        mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Asha Rao","email":"asha@example.com","password":"secret"}
@@ -86,7 +106,7 @@ class TradeXApiIntegrationTests {
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.error").value("Conflict"));
 
-        mockMvc.perform(post("/api/user")
+        mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Bad Email","email":"not-an-email","password":"secret"}
@@ -500,7 +520,7 @@ class TradeXApiIntegrationTests {
     }
 
     private long createUser(String name, String email) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/user")
+        MvcResult result = mockMvc.perform(post("/api/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"%s","email":"%s","password":"secret"}

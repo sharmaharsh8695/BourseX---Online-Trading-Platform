@@ -5,6 +5,7 @@ import com.harsh.finance_project.holding.model.Holding;
 import com.harsh.finance_project.holding.repository.HoldingRepository;
 import com.harsh.finance_project.holding.repository.PortfolioValueTotals;
 import com.harsh.finance_project.exception.UserNotFoundException;
+import com.harsh.finance_project.security.ResourceOwnershipService;
 import com.harsh.finance_project.portfolio.dto.HoldingSummaryResponse;
 import com.harsh.finance_project.portfolio.dto.PortfolioResponse;
 import com.harsh.finance_project.user.repository.UserRepository;
@@ -22,14 +23,17 @@ public class PortfolioService {
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
     private final HoldingRepository holdingRepository;
+    private final ResourceOwnershipService ownershipService;
 
-    public PortfolioService(UserRepository userRepository, WalletRepository walletRepository, HoldingRepository holdingRepository) {
+    public PortfolioService(UserRepository userRepository, WalletRepository walletRepository, HoldingRepository holdingRepository, ResourceOwnershipService ownershipService) {
         this.userRepository = userRepository;
         this.walletRepository = walletRepository;
         this.holdingRepository = holdingRepository;
+        this.ownershipService = ownershipService;
     }
 
     public PortfolioResponse getPortfolio(Long userId) {
+        ownershipService.requireOwner(userId);
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException(userId);
         }
@@ -49,6 +53,7 @@ public class PortfolioService {
     }
 
     public Page<HoldingSummaryResponse> getPortfolioHoldings(Long userId, Pageable pageable) {
+        ownershipService.requireOwner(userId);
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException(userId);
         }

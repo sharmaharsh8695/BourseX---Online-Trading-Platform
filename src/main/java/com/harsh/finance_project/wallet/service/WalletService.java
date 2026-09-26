@@ -5,6 +5,7 @@ import com.harsh.finance_project.exception.InsufficientBalanceException;
 import com.harsh.finance_project.exception.UserNotFoundException;
 import com.harsh.finance_project.user.model.User;
 import com.harsh.finance_project.user.repository.UserRepository;
+import com.harsh.finance_project.security.ResourceOwnershipService;
 import com.harsh.finance_project.wallet.dto.CreateWalletRequest;
 import com.harsh.finance_project.wallet.dto.WalletAmountRequest;
 import com.harsh.finance_project.wallet.dto.WalletResponse;
@@ -29,15 +30,18 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final WalletTransactionRepository transactionRepository;
     private final UserRepository userRepository;
+    private final ResourceOwnershipService ownershipService;
 
-    public WalletService(WalletRepository walletRepository, WalletTransactionRepository transactionRepository, UserRepository userRepository) {
+    public WalletService(WalletRepository walletRepository, WalletTransactionRepository transactionRepository, UserRepository userRepository, ResourceOwnershipService ownershipService) {
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
         this.userRepository = userRepository;
+        this.ownershipService = ownershipService;
     }
 
     @Transactional
     public WalletResponse createWallet(CreateWalletRequest dto) {
+        ownershipService.requireOwner(dto.getUserId());
         User user = userRepository.findById(dto.getUserId()).orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
 
         if (walletRepository.existsByUser(user)) {
@@ -52,6 +56,7 @@ public class WalletService {
     }
 
     public Wallet getWalletByUser(Long userId) {
+        ownershipService.requireOwner(userId);
         return walletRepository.findByUserId(userId).orElseThrow(() -> new NoResultException());
     }
 
@@ -64,6 +69,7 @@ public class WalletService {
 
     @Transactional
     public WalletResponse deposit(Long userId, WalletAmountRequest dto) {
+        ownershipService.requireOwner(userId);
         Wallet wallet = getWalletByUserForUpdate(userId);
         validateActive(wallet);
         validatePositiveAmount(dto.getAmount());
@@ -76,6 +82,7 @@ public class WalletService {
 
     @Transactional
     public WalletResponse withdraw(Long userId, WalletAmountRequest dto) {
+        ownershipService.requireOwner(userId);
         Wallet wallet = getWalletByUserForUpdate(userId);
         validateActive(wallet);
         validatePositiveAmount(dto.getAmount());
@@ -92,6 +99,7 @@ public class WalletService {
 
     @Transactional
     public WalletResponse reserveFunds(Long userId, WalletAmountRequest dto) {
+        ownershipService.requireOwner(userId);
         Wallet wallet = getWalletByUserForUpdate(userId);
         validateActive(wallet);
         validatePositiveAmount(dto.getAmount());
@@ -108,6 +116,7 @@ public class WalletService {
 
     @Transactional
     public WalletResponse releaseReservedFunds(Long userId, WalletAmountRequest dto) {
+        ownershipService.requireOwner(userId);
         Wallet wallet = getWalletByUserForUpdate(userId);
         validateActive(wallet);
         validatePositiveAmount(dto.getAmount());
@@ -124,6 +133,7 @@ public class WalletService {
 
     @Transactional
     public WalletResponse captureReservedFunds(Long userId, WalletAmountRequest dto) {
+        ownershipService.requireOwner(userId);
         Wallet wallet = getWalletByUserForUpdate(userId);
         validateActive(wallet);
         validatePositiveAmount(dto.getAmount());
